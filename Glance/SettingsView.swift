@@ -10,6 +10,8 @@ struct SettingsView: View {
     @AppStorage("showYouTube") private var showYouTube = true
     @AppStorage("showPRs")     private var showPRs = true
 
+    @AppStorage("appearance") private var appearance = Appearance.system.rawValue
+
     @AppStorage("placeName") private var placeName = Config.defaultPlaceName
 
     @AppStorage("githubUsername") private var githubUsername = Config.defaultGithubUsername
@@ -24,6 +26,13 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Appearance") {
+                    Picker("Theme", selection: $appearance) {
+                        ForEach(Appearance.allCases) { Text($0.label).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
                 Section("Pages") {
                     Toggle("Photos", isOn: $showPhotos)
                     Toggle("Weather", isOn: $showWeather)
