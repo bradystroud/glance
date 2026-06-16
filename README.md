@@ -1,5 +1,7 @@
 # Glance
 
+**[🌐 glance website](https://bradystroud.github.io/glance/)**
+
 An always-on iPad dashboard. Rotates through full-screen scenes:
 
 - 📷 **Photos** — straight from your on-device photo library (incl. iCloud) via PhotoKit
