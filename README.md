@@ -10,6 +10,19 @@ An always-on iPad dashboard. Rotates through full-screen scenes:
 
 The screen stays awake while the app is open (`isIdleTimerDisabled`). A persistent header shows the time, date, and temperature.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/weather.jpeg" alt="Weather scene — current conditions, hourly strip, and multi-day forecast"></td>
+    <td width="50%"><img src="docs/news.jpeg" alt="Hacker News scene — front-page stories"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/youtube.jpeg" alt="YouTube scene — newest videos from chosen channels"></td>
+    <td width="50%"><img src="docs/photos.jpeg" alt="Photos scene — two portrait photos side by side"></td>
+  </tr>
+</table>
+
 ## Requirements
 
 - **Full Xcode** (from the Mac App Store) — Command Line Tools alone can't build iOS apps.
