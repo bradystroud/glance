@@ -1,0 +1,131 @@
+name: Release to TestFlight
+
+# Archives, signs, and uploads Glance to App Store Connect (TestFlight).
+# From TestFlight you promote the build to the App Store and submit for review
+# in the App Store Connect web UI.
+#
+# Trigger: push a tag like `v1.0.1`, or run manually (workflow_dispatch).
+# The build number is set to the workflow run number so every upload is unique.
+#
+# Requires a paid Apple Developer account and these repository secrets
+# (Settings → Secrets and variables → Actions):
+#
+#   APPLE_TEAM_ID            Your 10-char Team ID (App Store Connect → Membership).
+#   BUILD_CERTIFICATE_BASE64 Apple Distribution cert as a .p12, base64-encoded:
+#                              base64 -i dist.p12 | pbcopy
+#   P12_PASSWORD             Password you set when exporting the .p12.
+#   KEYCHAIN_PASSWORD        Any random string (used for the temp CI keychain).
+#   ASC_KEY_ID               App Store Connect API key ID.
+#   ASC_ISSUER_ID            App Store Connect API issuer ID.
+#   ASC_KEY_BASE64           The API key .p8 file, base64-encoded:
+#                              base64 -i AuthKey_XXXX.p8 | pbcopy
+#
+# Create the API key at App Store Connect → Users and Access → Integrations →
+# App Store Connect API (role: App Manager).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    name: Archive & upload
+    runs-on: macos-15
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Import signing certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/dist.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Install App Store Connect API key
+        env:
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
+        run: |
+          mkdir -p "$HOME/private_keys"
+          echo -n "$ASC_KEY_BASE64" | base64 --decode -o "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -project Glance.xcodeproj \
+            -scheme Glance \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Glance.xcarchive" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Export .ipa
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>        <string>app-store</string>
+              <key>destination</key>   <string>export</string>
+              <key>signingStyle</key>  <string>automatic</string>
+              <key>teamID</key>        <string>${APPLE_TEAM_ID}</string>
+              <key>uploadSymbols</key> <true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Glance.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Upload to TestFlight
+        run: |
+          IPA="$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)"
+          echo "Uploading $IPA"
+          xcrun altool --upload-app -f "$IPA" --type ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Upload .ipa artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Glance-ipa
+          path: ${{ runner.temp }}/export/*.ipa
+          if-no-files-found: ignore

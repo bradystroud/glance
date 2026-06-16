@@ -60,6 +60,25 @@ Capture fresh ones:
 
 **CLI alternative** (after the Distribution cert exists): `./scripts/archive.sh` — see that script.
 
+**CI alternative (GitHub Actions):** `.github/workflows/release.yml` archives, signs, and
+uploads to TestFlight automatically. Trigger it by pushing a tag (`git tag v1.0.0 && git push
+--tags`) or running it manually from the Actions tab. It needs these repo secrets first
+(Settings → Secrets and variables → Actions) — full instructions are in the workflow header:
+
+| Secret | What it is |
+|---|---|
+| `APPLE_TEAM_ID` | 10-char Team ID (App Store Connect → Membership). |
+| `BUILD_CERTIFICATE_BASE64` | Apple Distribution `.p12`, base64-encoded. |
+| `P12_PASSWORD` | Password used when exporting the `.p12`. |
+| `KEYCHAIN_PASSWORD` | Any random string (temp CI keychain). |
+| `ASC_KEY_ID` / `ASC_ISSUER_ID` | App Store Connect API key + issuer ID. |
+| `ASC_KEY_BASE64` | The API key `.p8`, base64-encoded. |
+
+The build number is set to the GitHub run number, so each upload is automatically unique.
+
+> A separate **CI** workflow (`.github/workflows/ci.yml`) compile-checks every push/PR with
+> signing disabled — it needs no account or secrets and works today.
+
 ## 5. Submit for review  **(you)**
 
 1. In App Store Connect, the uploaded build appears under the version after a few minutes of
